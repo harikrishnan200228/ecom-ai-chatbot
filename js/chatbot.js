@@ -1,5 +1,5 @@
 /**
- * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v2)
+ * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v3)
  * ----------------------------------------------------------------
  * Core principle: VERBATIM TRANSPARENCY.
  * Every single message the shopper types is captured and rendered
@@ -8,13 +8,12 @@
  * product's core trust feature and must never be bypassed, even as
  * the intelligence layer around it grows more advanced below.
  *
- * v2 additions:
- *   - Typo-tolerant + synonym-aware product search
- *   - Cart (add / view / remove / checkout summary)
- *   - Side-by-side product comparison ("compare X and Y")
- *   - Basic sentiment detection with empathetic de-escalation
- *   - Conversation memory (refers back to last search results)
- *   - Dark mode toggle
+ * v3 additions:
+ *   - Location-based delivery estimate (browser geolocation, opt-in)
+ *   - AI Shopping Consultant (multi-turn: interest -> budget -> pick)
+ *   - Goal-Based Shopping ("set up a home gym under 5000")
+ *   - Community AI (simulated trending searches)
+ *   - AI Box Builder (curated, discounted bundles)
  *
  * Drop-in usage on any existing storefront:
  *   <link rel="stylesheet" href="css/style.css">
@@ -44,8 +43,6 @@
 
   const GREETINGS = ["hi", "hello", "hey", "hii", "helo", "yo", "namaste"];
 
-  // Lightweight synonym map so "headset"/"earphones"/"buds" all reach the same products
-  // without needing a real NLP model. Extend this freely as your catalog grows.
   const SYNONYMS = {
     "headset": "earbuds", "headphones": "earbuds", "earphones": "earbuds", "buds": "earbuds", "earpod": "earbuds", "earpods": "earbuds",
     "sneakers": "shoes", "trainers": "shoes", "kicks": "shoes",
@@ -59,6 +56,64 @@
   };
 
   const FRUSTRATION_WORDS = ["angry", "furious", "worst", "terrible", "horrible", "scam", "cheated", "useless", "pathetic", "disgusted", "frustrated", "awful", "unacceptable"];
+
+  // ---- v3: reference data for the new features ----
+
+  // Approximate coordinates for a handful of Indian cities, used only to give a
+  // realistic-feeling delivery estimate from the browser's geolocation. In
+  // production, replace this with a real pincode/logistics API lookup.
+  const CITIES = [
+    { name: "Bengaluru", lat: 12.9716, lon: 77.5946, eta: "1–2 business days" },
+    { name: "Mumbai", lat: 19.0760, lon: 72.8777, eta: "2–3 business days" },
+    { name: "Delhi NCR", lat: 28.6139, lon: 77.2090, eta: "2–3 business days" },
+    { name: "Chennai", lat: 13.0827, lon: 80.2707, eta: "1–2 business days" },
+    { name: "Kolkata", lat: 22.5726, lon: 88.3639, eta: "3–4 business days" },
+    { name: "Kochi", lat: 9.9312, lon: 76.2673, eta: "1–2 business days" },
+    { name: "Hyderabad", lat: 17.3850, lon: 78.4867, eta: "2 business days" },
+    { name: "Kollam", lat: 8.8932, lon: 76.6141, eta: "1–2 business days" }
+  ];
+
+  // Interest keyword -> catalog tags, used by the AI Shopping Consultant to
+  // narrow a fuzzy human interest ("cooking", "fitness") down to real tags.
+  const INTEREST_TAGS = {
+    cooking: ["kitchen", "coffee", "appliance", "home"],
+    fitness: ["fitness", "sports", "tracker", "running"],
+    tech: ["electronics", "laptop", "audio", "wireless"],
+    fashion: ["fashion", "clothing", "footwear"],
+    home: ["home", "furniture"],
+    beauty: ["beauty", "skincare", "cosmetics"],
+    travel: ["travel", "bag", "hiking"]
+  };
+
+  // Theme keyword -> catalog tags, used by Goal-Based Shopping to assemble a
+  // multi-item plan under a stated budget.
+  const THEME_TAGS = {
+    gym: ["fitness", "sports", "tracker"],
+    "home gym": ["fitness", "sports", "tracker"],
+    office: ["laptop", "work", "electronics"],
+    kitchen: ["kitchen", "home", "appliance", "coffee"],
+    wardrobe: ["fashion", "clothing", "footwear"],
+    travel: ["travel", "bag", "hiking"],
+    skincare: ["beauty", "skincare", "cosmetics"]
+  };
+
+  // Curated bundles for the AI Box Builder — each pulls matching catalog items
+  // and applies a bundle discount, same idea as a subscription/gift box.
+  const BUNDLES = {
+    fitness: { label: "Home Fitness Box", tags: ["fitness", "sports", "tracker"], discount: 0.07 },
+    travel: { label: "Travel Essentials Box", tags: ["travel", "bag", "hiking"], discount: 0.05 },
+    coffee: { label: "Coffee Lover's Box", tags: ["coffee", "kitchen", "appliance"], discount: 0.05 },
+    audio: { label: "Audio Starter Box", tags: ["audio", "wireless", "bluetooth"], discount: 0.05 },
+    skincare: { label: "Skincare Starter Box", tags: ["beauty", "skincare", "cosmetics"], discount: 0.05 }
+  };
+
+  const TRENDING_SEARCHES = [
+    { term: "wireless earbuds", count: 128 },
+    { term: "running shoes", count: 94 },
+    { term: "4K smart TV", count: 76 },
+    { term: "coffee maker", count: 61 },
+    { term: "fitness tracker", count: 55 }
+  ];
 
   function escapeHtml(str) {
     const div = document.createElement("div");
@@ -79,8 +134,6 @@
     return expanded;
   }
 
-  // Small Levenshtein implementation for typo tolerance (e.g. "erabuds" -> "earbuds").
-  // Fine for short product-search tokens; not meant for long strings.
   function levenshtein(a, b) {
     const m = a.length, n = b.length;
     if (m === 0) return n;
@@ -100,13 +153,37 @@
 
   function fuzzyIncludes(haystackWord, needleWord) {
     if (haystackWord.includes(needleWord) || needleWord.includes(haystackWord)) return true;
-    if (needleWord.length < 4) return false; // avoid false positives on very short words
+    if (needleWord.length < 4) return false;
     return levenshtein(haystackWord, needleWord) <= 2;
   }
 
   function detectSentiment(text) {
     const lower = text.toLowerCase();
     return FRUSTRATION_WORDS.some(w => lower.includes(w)) ? "frustrated" : "neutral";
+  }
+
+  function parseLargestNumber(raw) {
+    const nums = raw.replace(/,/g, "").match(/\d+/g);
+    if (!nums) return null;
+    return Math.max(...nums.map(Number));
+  }
+
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    const toRad = d => (d * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function nearestCity(lat, lon) {
+    let best = null, bestDist = Infinity;
+    CITIES.forEach(c => {
+      const d = haversineKm(lat, lon, c.lat, c.lon);
+      if (d < bestDist) { bestDist = d; best = c; }
+    });
+    return best;
   }
 
   function detectIntent(raw) {
@@ -119,6 +196,26 @@
     const orderIdMatch = raw.match(/ORD\d{3,}/i);
     if (orderIdMatch || /track|order status|where is my order/i.test(text)) {
       return { type: "track_order", orderId: orderIdMatch ? orderIdMatch[0].toUpperCase() : null };
+    }
+
+    if (/deliver(y)?.*(my location|here|current location)|check delivery.*(location)|eta.*(my location)|when will it (arrive|reach) (me|here)/i.test(text)) {
+      return { type: "locate_delivery" };
+    }
+
+    if (/trending|popular|what.*(others|people|shoppers).*(buying|searching|looking)/i.test(text)) {
+      return { type: "trending" };
+    }
+
+    if (/\b(build|create|make)\b.*\b(box|bundle)\b|bundle me/i.test(text)) {
+      return { type: "box_builder", raw: text };
+    }
+
+    if (/\b(build|set up|setup)\b.*\b(gym|office|kitchen|wardrobe|travel kit)\b|\bunder ₹?\d+|budget of/i.test(text)) {
+      return { type: "goal_shopping", raw: text };
+    }
+
+    if (/gift|suggest something|help me (choose|pick|find|decide)|not sure what to (get|buy)|recommend something/i.test(text)) {
+      return { type: "consultant_start" };
     }
 
     if (/\bcompare\b/i.test(text)) {
@@ -134,7 +231,7 @@
     }
 
     if (/\badd\b.*\bcart\b|\bbuy (it|this|that)\b/i.test(text)) {
-      return { type: "add_to_cart", raw: text };
+      return { type: "add_to_cart" };
     }
 
     for (const entry of FAQ) {
@@ -187,6 +284,10 @@
       .map(r => r.p);
   }
 
+  function productsByTags(catalog, tags) {
+    return catalog.filter(p => p.tags.some(t => tags.includes(t)));
+  }
+
   class ShopSphereChat {
     constructor(opts) {
       this.opts = Object.assign({
@@ -194,14 +295,15 @@
         themeColor: "#1A2B4C",
         accentColor: "#FF9F1C",
         catalog: window.SHOPSPHERE_PRODUCTS || [],
-        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, or manage your cart — I'll always show exactly what you typed before I act on it."
+        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, plan a budget, or just say \"help me pick a gift\" — I'll always show exactly what you typed before I act on it."
       }, opts);
 
       this.transcript = [];
       this.awaitingOrderId = false;
       this.lastResults = [];
-      this.cart = []; // { product, qty }
+      this.cart = [];
       this.darkMode = false;
+      this.consultant = null; // { step: "interest" | "budget", interest }
 
       this._buildDOM();
       this._bindEvents();
@@ -209,7 +311,7 @@
     }
 
     _quickReplies() {
-      return ["Track my order", "Search for headphones", "Compare shoes and hoodie", "Talk to a human"];
+      return ["Help me pick a gift", "Set up a home gym under 5000", "What's trending?", "Track my order"];
     }
 
     _buildDOM() {
@@ -319,11 +421,9 @@
     }
 
     _handleUserInput(raw) {
-      // STEP 1 — Render the shopper's exact words, unmodified. This is non-negotiable.
       this._pushVerbatim(raw);
       this.transcript.push({ role: "user", text: raw, time: timeNow() });
 
-      // STEP 2 — Interpret, but never overwrite what's already shown.
       this._showTyping();
       window.setTimeout(() => {
         this._hideTyping();
@@ -332,8 +432,6 @@
     }
 
     _respondTo(raw) {
-      // Sentiment check runs first — a frustrated shopper gets acknowledged
-      // before anything else, regardless of what else they asked.
       if (detectSentiment(raw) === "frustrated") {
         this._pushBotMessage("I'm sorry this hasn't gone well — that's frustrating, and I want to help sort it out quickly. I can connect you with a human agent right now, or try to resolve it here first.", ["Talk to a human", "Try to help me here"]);
         return;
@@ -342,17 +440,20 @@
       if (this.awaitingOrderId) {
         this.awaitingOrderId = false;
         const idMatch = raw.match(/ORD\d{3,}/i);
-        if (idMatch) {
-          return this._resolveOrder(idMatch[0].toUpperCase());
-        }
-        // fall through to normal handling if no ID was actually given
+        if (idMatch) return this._resolveOrder(idMatch[0].toUpperCase());
+      }
+
+      // Multi-turn AI Shopping Consultant takes priority over normal intent
+      // detection while a session is active, same pattern as awaitingOrderId.
+      if (this.consultant) {
+        return this._continueConsultant(raw);
       }
 
       const intent = detectIntent(raw);
 
       switch (intent.type) {
         case "greeting":
-          this._pushBotMessage("Hello! What can I help you with — finding a product, comparing options, tracking an order, or your cart?", this._quickReplies());
+          this._pushBotMessage("Hello! What can I help you with — finding a product, comparing options, tracking an order, or planning a purchase?", this._quickReplies());
           break;
 
         case "track_order":
@@ -362,6 +463,27 @@
             this.awaitingOrderId = true;
             this._pushBotMessage("Sure — could you share your order ID? It looks like ORD1001 and is in your order confirmation email.");
           }
+          break;
+
+        case "locate_delivery":
+          this._handleLocationDelivery();
+          break;
+
+        case "trending":
+          this._pushTrending();
+          break;
+
+        case "box_builder":
+          this._handleBoxBuilder(intent.raw);
+          break;
+
+        case "goal_shopping":
+          this._handleGoalShopping(intent.raw);
+          break;
+
+        case "consultant_start":
+          this.consultant = { step: "interest" };
+          this._pushBotMessage("Happy to help you pick something! What's it for, or what does the person enjoy — cooking, fitness, tech, fashion, home, beauty, or travel?", ["Cooking", "Fitness", "Tech", "Home"]);
           break;
 
         case "faq":
@@ -419,8 +541,130 @@
         }
 
         default:
-          this._pushBotMessage(`I want to make sure I get this right — you said: "${raw}". I can help with product search, comparisons, order tracking, your cart, or returns. Which one fits best?`, this._quickReplies());
+          this._pushBotMessage(`I want to make sure I get this right — you said: "${raw}". I can help with product search, comparisons, order tracking, gift picks, budget planning, or your cart. Which one fits best?`, this._quickReplies());
       }
+    }
+
+    // ---------------- v3: AI Shopping Consultant ----------------
+    _continueConsultant(raw) {
+      if (this.consultant.step === "interest") {
+        this.consultant.interest = raw.toLowerCase().trim();
+        this.consultant.step = "budget";
+        this._pushBotMessage("Great — and what's your budget? For example: under 1000, 1000 to 3000, or above 3000.");
+        return;
+      }
+
+      if (this.consultant.step === "budget") {
+        const interest = this.consultant.interest;
+        const budget = parseLargestNumber(raw);
+        const interestKey = Object.keys(INTEREST_TAGS).find(k => interest.includes(k)) || null;
+        const tags = interestKey ? INTEREST_TAGS[interestKey] : [];
+        let candidates = tags.length ? productsByTags(this.opts.catalog, tags) : searchProducts(interest, this.opts.catalog);
+
+        if (budget) {
+          const withinBudget = candidates.filter(p => p.price <= budget);
+          candidates = withinBudget.length ? withinBudget : candidates;
+        }
+        candidates.sort((a, b) => b.rating - a.rating);
+
+        this.consultant = null;
+
+        if (candidates.length === 0) {
+          this._pushBotMessage(`I couldn't find a confident match for "${interest}" — want to just search directly instead?`, ["Search for shoes", "Search for laptop"]);
+          return;
+        }
+
+        const pick = candidates[0];
+        this._pushBotMessage(`Based on that, here's my top pick:`);
+        this._pushProductCards([pick]);
+        this.lastResults = [pick];
+      }
+    }
+
+    // ---------------- v3: Location-based delivery estimate ----------------
+    _handleLocationDelivery() {
+      if (!navigator.geolocation) {
+        this._pushBotMessage("Your browser doesn't support location access — you can still check delivery time by entering your pincode on the checkout page.");
+        return;
+      }
+      this._pushBotMessage("Locating you now — please allow location access if your browser prompts you.");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const city = nearestCity(pos.coords.latitude, pos.coords.longitude);
+          this._pushBotMessage(`Looks like you're closest to ${city.name}. Estimated delivery time to your area: ${city.eta}.`);
+        },
+        () => {
+          this._pushBotMessage("I couldn't access your location — that's fine, you can still check delivery time by entering your pincode at checkout.");
+        },
+        { timeout: 8000 }
+      );
+    }
+
+    // ---------------- v3: Goal-Based Shopping ----------------
+    _handleGoalShopping(raw) {
+      const budget = parseLargestNumber(raw);
+      const themeKey = Object.keys(THEME_TAGS).find(k => raw.includes(k));
+
+      if (!themeKey || !budget) {
+        this._pushBotMessage('Tell me a theme and a budget together, like "set up a home gym under 5000" or "plan my kitchen under 4000".');
+        return;
+      }
+
+      const tags = THEME_TAGS[themeKey];
+      const candidates = productsByTags(this.opts.catalog, tags).sort((a, b) => a.price - b.price);
+
+      const plan = [];
+      let total = 0;
+      for (const p of candidates) {
+        if (total + p.price <= budget) {
+          plan.push(p);
+          total += p.price;
+        }
+      }
+
+      if (plan.length === 0) {
+        this._pushBotMessage(`I couldn't fit anything for "${themeKey}" within ₹${budget.toLocaleString("en-IN")} — try raising the budget a bit.`);
+        return;
+      }
+
+      const lines = plan.map(p => `• ${p.name} — ₹${p.price.toLocaleString("en-IN")}`);
+      const remaining = budget - total;
+      this._pushBotMessage(
+        `Here's a ${themeKey} starter plan within ₹${budget.toLocaleString("en-IN")}:\n${lines.join("\n")}\n\nRunning total: ₹${total.toLocaleString("en-IN")} — ₹${remaining.toLocaleString("en-IN")} left in your budget.`,
+        ["Add all to cart", "Show more options"]
+      );
+      this.lastResults = plan;
+    }
+
+    // ---------------- v3: AI Box Builder ----------------
+    _handleBoxBuilder(raw) {
+      const key = Object.keys(BUNDLES).find(k => raw.includes(k) || raw.includes(BUNDLES[k].label.toLowerCase()));
+      if (!key) {
+        const available = Object.values(BUNDLES).map(b => b.label).join(", ");
+        this._pushBotMessage(`I have these curated boxes available: ${available}. Try "build me a ${Object.keys(BUNDLES)[0]} box".`);
+        return;
+      }
+      const bundle = BUNDLES[key];
+      const items = productsByTags(this.opts.catalog, bundle.tags).slice(0, 3);
+      if (items.length === 0) {
+        this._pushBotMessage(`I couldn't assemble the ${bundle.label} right now — the catalog doesn't have matching items yet.`);
+        return;
+      }
+      const subtotal = items.reduce((sum, p) => sum + p.price, 0);
+      const discounted = Math.round(subtotal * (1 - bundle.discount));
+      const lines = items.map(p => `• ${p.name} — ₹${p.price.toLocaleString("en-IN")}`);
+      this._pushBotMessage(
+        `${bundle.label}:\n${lines.join("\n")}\n\nBundle price: ₹${discounted.toLocaleString("en-IN")} (${Math.round(bundle.discount * 100)}% off ₹${subtotal.toLocaleString("en-IN")})`,
+        ["Add box to cart", "Keep shopping"]
+      );
+      this.lastResults = items;
+    }
+
+    // ---------------- v3: Community AI (trending) ----------------
+    _pushTrending() {
+      const top = [...TRENDING_SEARCHES].sort((a, b) => b.count - a.count).slice(0, 3);
+      const lines = top.map(t => `• "${t.term}" — searched by ${t.count} shoppers this week`);
+      this._pushBotMessage(`Here's what's trending right now:\n${lines.join("\n")}`, top.map(t => `Search for ${t.term}`));
     }
 
     _resolveOrder(orderId) {
@@ -467,7 +711,7 @@
         </div>
         <div class="ssc-msg-time">${timeNow()}</div>
       `;
-      wrap.querySelector(".ssc-ticket-body").textContent = raw; // textContent guarantees zero alteration/escaping surprises
+      wrap.querySelector(".ssc-ticket-body").textContent = raw;
       this.messagesEl.appendChild(wrap);
       this._scrollToBottom();
     }
