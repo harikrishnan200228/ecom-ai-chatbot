@@ -1,0 +1,18 @@
+/**
+ * Demo product catalog for the ShopSphere AI Assistant.
+ * In production, replace this static array with a call to your own
+ * product search API inside chatbot.js -> searchProducts().
+ * (Same data is also provided as products.json for backend/import use.)
+ */
+window.SHOPSPHERE_PRODUCTS = [
+  { "id": "P1001", "name": "AirFlow Pro Wireless Earbuds", "category": "electronics", "price": 2499, "mrp": 3999, "rating": 4.3, "stock": 42, "image": "🎧", "tags": ["earbuds","wireless","audio","bluetooth"] },
+  { "id": "P1002", "name": "UrbanFit Running Shoes", "category": "footwear", "price": 1799, "mrp": 2999, "rating": 4.1, "stock": 15, "image": "👟", "tags": ["shoes","running","sports","footwear"] },
+  { "id": "P1003", "name": "ClearView 55\" 4K Smart TV", "category": "electronics", "price": 34999, "mrp": 45999, "rating": 4.5, "stock": 8, "image": "📺", "tags": ["tv","television","smart tv","4k"] },
+  { "id": "P1004", "name": "NimbusStack Cotton Hoodie", "category": "fashion", "price": 999, "mrp": 1599, "rating": 4.0, "stock": 60, "image": "🧥", "tags": ["hoodie","clothing","fashion","winter"] },
+  { "id": "P1005", "name": "BrewMate Automatic Coffee Maker", "category": "home", "price": 3299, "mrp": 4499, "rating": 4.4, "stock": 22, "image": "☕", "tags": ["coffee","kitchen","appliance","home"] },
+  { "id": "P1006", "name": "PixelBook Air 14 Laptop", "category": "electronics", "price": 54999, "mrp": 64999, "rating": 4.6, "stock": 5, "image": "💻", "tags": ["laptop","computer","electronics","work"] },
+  { "id": "P1007", "name": "FlexBand Fitness Tracker", "category": "electronics", "price": 1499, "mrp": 2199, "rating": 3.9, "stock": 33, "image": "⌚", "tags": ["fitness","watch","tracker","health"] },
+  { "id": "P1008", "name": "GlowSkin Vitamin C Serum", "category": "beauty", "price": 449, "mrp": 699, "rating": 4.2, "stock": 90, "image": "🧴", "tags": ["skincare","beauty","serum","cosmetics"] },
+  { "id": "P1009", "name": "TrailPack 40L Backpack", "category": "travel", "price": 1899, "mrp": 2799, "rating": 4.3, "stock": 18, "image": "🎒", "tags": ["backpack","travel","bag","hiking"] },
+  { "id": "P1010", "name": "SofaLoom 3-Seater Recliner", "category": "home", "price": 24999, "mrp": 32999, "rating": 4.1, "stock": 4, "image": "🛋️", "tags": ["furniture","sofa","home","recliner"] }
+];

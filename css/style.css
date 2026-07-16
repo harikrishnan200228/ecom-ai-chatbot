@@ -1,0 +1,399 @@
+/* ==========================================================================
+   ShopSphere — Design tokens
+   Palette: Deep Indigo (nav/trust), Signal Amber (action), Soft Slate (bg),
+            Success Green (confirmations), Charcoal (text).
+   Type: Poppins (display) / Inter (body) / IBM Plex Mono (verbatim ticket —
+         a typewriter/receipt register that visually signals "recorded exactly").
+   ========================================================================== */
+:root {
+  --indigo-900: #14213D;
+  --indigo-700: #1A2B4C;
+  --indigo-500: #2B3F6B;
+  --amber-500: #FF9F1C;
+  --amber-600: #E88A00;
+  --slate-50: #F5F7FA;
+  --slate-100: #EAEEF3;
+  --slate-300: #C7D0DC;
+  --charcoal-900: #1F2933;
+  --charcoal-600: #52606D;
+  --green-600: #16A34A;
+  --white: #FFFFFF;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-lg: 0 20px 45px rgba(20, 33, 61, 0.18);
+  --shadow-sm: 0 2px 10px rgba(20, 33, 61, 0.08);
+  --font-display: 'Poppins', 'Segoe UI', sans-serif;
+  --font-body: 'Inter', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--slate-50);
+  color: var(--charcoal-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------- Demo storefront shell (so the widget has a realistic host page) ---------------- */
+.demo-nav {
+  background: var(--indigo-700);
+  color: var(--white);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: var(--shadow-sm);
+}
+.demo-nav .brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+.demo-nav .brand span { color: var(--amber-500); }
+.demo-search {
+  flex: 1;
+  display: flex;
+  max-width: 640px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.demo-search input {
+  flex: 1;
+  border: none;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+}
+.demo-search button {
+  background: var(--amber-500);
+  border: none;
+  color: var(--indigo-900);
+  font-weight: 600;
+  padding: 0 18px;
+  cursor: pointer;
+}
+.demo-nav-links {
+  display: flex;
+  gap: 20px;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+.demo-nav-links a { color: var(--white); text-decoration: none; }
+
+.demo-hero {
+  background: linear-gradient(135deg, var(--indigo-900), var(--indigo-500));
+  color: var(--white);
+  padding: 64px 32px;
+  text-align: center;
+}
+.demo-hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+.demo-hero p {
+  max-width: 560px;
+  margin: 0 auto;
+  color: var(--slate-300);
+  line-height: 1.6;
+}
+
+.demo-grid {
+  max-width: 1100px;
+  margin: -32px auto 60px;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+.demo-product {
+  background: var(--white);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.demo-product:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.demo-product .emoji { font-size: 2.4rem; margin-bottom: 10px; }
+.demo-product h3 { font-family: var(--font-display); font-size: 0.95rem; margin: 0 0 6px; }
+.demo-product .price { font-weight: 700; color: var(--indigo-700); }
+.demo-product .price s { color: var(--charcoal-600); font-weight: 400; margin-left: 6px; font-size: 0.85rem; }
+
+.demo-footer {
+  text-align: center;
+  padding: 28px;
+  color: var(--charcoal-600);
+  font-size: 0.85rem;
+}
+
+/* ==========================================================================
+   ShopSphere AI Assistant Widget
+   ========================================================================== */
+.ssc-root {
+  --ssc-theme: #1A2B4C;
+  --ssc-accent: #FF9F1C;
+  font-family: var(--font-body);
+}
+
+.ssc-launcher {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: var(--ssc-theme);
+  color: white;
+  font-size: 1.6rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  z-index: 9998;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ssc-launcher:hover { transform: scale(1.06); }
+.ssc-launcher:focus-visible { outline: 3px solid var(--ssc-accent); outline-offset: 3px; }
+
+.ssc-panel {
+  position: fixed;
+  bottom: 100px;
+  right: 24px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  height: 560px;
+  max-height: calc(100vh - 140px);
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.ssc-panel.ssc-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.ssc-header {
+  background: var(--ssc-theme);
+  color: white;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ssc-header-info { display: flex; align-items: center; gap: 10px; }
+.ssc-avatar { font-size: 1.5rem; }
+.ssc-title { font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; }
+.ssc-subtitle { font-size: 0.72rem; opacity: 0.8; display: flex; align-items: center; gap: 5px; }
+.ssc-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; }
+.ssc-header-actions { display: flex; gap: 4px; }
+.ssc-icon-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.ssc-icon-btn:hover { background: rgba(255,255,255,0.22); }
+
+.ssc-verbatim-strip {
+  background: #FFF4E2;
+  border-bottom: 1px dashed var(--amber-600);
+  padding: 8px 14px;
+  font-size: 0.68rem;
+  color: #7A4A00;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ssc-verbatim-label {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.ssc-verbatim-copy { opacity: 0.85; }
+
+.ssc-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--slate-50);
+}
+
+.ssc-msg { display: flex; flex-direction: column; gap: 4px; max-width: 92%; }
+.ssc-msg-user { align-self: flex-end; align-items: flex-end; }
+.ssc-msg-bot { align-self: flex-start; flex-direction: row; align-items: flex-start; gap: 8px; max-width: 100%; }
+
+.ssc-avatar-sm { font-size: 1.1rem; margin-top: 2px; }
+
+/* Signature element: the "verbatim ticket" — a receipt-like, monospace
+   readout of exactly what the user typed. This is the trust anchor of
+   the whole product and should always render before any bot reply. */
+.ssc-ticket {
+  background: var(--indigo-900);
+  color: #FDEFD8;
+  border-radius: 10px 10px 2px 10px;
+  padding: 8px 12px;
+  box-shadow: var(--shadow-sm);
+  max-width: 260px;
+}
+.ssc-ticket-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: var(--amber-500);
+  margin-bottom: 3px;
+}
+.ssc-ticket-body {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ssc-msg-time { font-size: 0.65rem; color: var(--charcoal-600); }
+
+.ssc-bubble {
+  background: var(--white);
+  border: 1px solid var(--slate-100);
+  border-radius: 2px 10px 10px 10px;
+  padding: 9px 13px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.ssc-typing-dots { display: flex; gap: 4px; padding: 12px 13px; }
+.ssc-typing-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--charcoal-600); opacity: 0.5;
+  animation: ssc-bounce 1.1s infinite ease-in-out;
+}
+.ssc-typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.ssc-typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ssc-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+.ssc-card-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.ssc-card {
+  background: white;
+  border: 1px solid var(--slate-100);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.ssc-card-img { font-size: 1.8rem; }
+.ssc-card-name { font-size: 0.72rem; font-weight: 600; margin: 4px 0; line-height: 1.3; height: 2.6em; overflow: hidden; }
+.ssc-card-price { font-size: 0.78rem; font-weight: 700; color: var(--indigo-700); }
+.ssc-card-price s { font-weight: 400; color: var(--charcoal-600); font-size: 0.68rem; margin-left: 4px; }
+.ssc-card-meta { font-size: 0.66rem; color: var(--charcoal-600); margin: 3px 0 6px; }
+.ssc-card-btn {
+  width: 100%;
+  border: none;
+  background: var(--amber-500);
+  color: var(--indigo-900);
+  font-weight: 600;
+  font-size: 0.7rem;
+  padding: 6px 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ssc-card-btn:hover { background: var(--amber-600); }
+
+.ssc-quickreplies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+.ssc-chip {
+  background: white;
+  border: 1px solid var(--slate-300);
+  color: var(--indigo-700);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.ssc-chip:hover { background: var(--slate-100); }
+
+.ssc-inputbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--slate-100);
+  background: white;
+}
+.ssc-input {
+  flex: 1;
+  border: 1px solid var(--slate-300);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+}
+.ssc-input:focus-visible { outline: 2px solid var(--ssc-theme); }
+.ssc-mic, .ssc-send {
+  border: none;
+  background: var(--slate-100);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+.ssc-send { background: var(--ssc-accent); color: var(--indigo-900); }
+.ssc-mic-active { background: #FCA5A5; }
+
+.ssc-footer {
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--charcoal-600);
+  padding: 6px 0 10px;
+  background: white;
+}
+.ssc-footer a { color: var(--charcoal-600); }
+
+@media (max-width: 420px) {
+  .ssc-panel { right: 12px; bottom: 88px; width: calc(100vw - 24px); height: 70vh; }
+  .ssc-launcher { right: 16px; bottom: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ssc-panel, .ssc-launcher, .demo-product { transition: none; }
+  .ssc-typing-dots span { animation: none; }
+}

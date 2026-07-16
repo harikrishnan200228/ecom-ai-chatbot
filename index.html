@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShopSphere — AI Shopping Assistant Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <nav class="demo-nav">
+    <div class="brand">Shop<span>Sphere</span></div>
+    <form class="demo-search" onsubmit="return false;">
+      <input type="text" placeholder="Search products, brands and more">
+      <button type="submit">Search</button>
+    </form>
+    <div class="demo-nav-links">
+      <a href="#">Orders</a>
+      <a href="#">Cart</a>
+      <a href="#">Account</a>
+    </div>
+  </nav>
+
+  <header class="demo-hero">
+    <h1>This is a demo storefront — try the assistant, bottom right</h1>
+    <p>Everything on this page is placeholder content so you can see the ShopSphere AI Assistant working exactly as it would on your own site. Click the chat bubble to open it.</p>
+  </header>
+
+  <main class="demo-grid" id="product-grid"></main>
+
+  <footer class="demo-footer">
+    ShopSphere Demo Storefront — for illustrating the AI Assistant widget only. No real transactions occur here.
+  </footer>
+
+  <script src="data/products.js"></script>
+  <script src="js/chatbot.js"></script>
+  <script>
+    // Render the demo product grid from the shared catalog
+    const grid = document.getElementById('product-grid');
+    window.SHOPSPHERE_PRODUCTS.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'demo-product';
+      card.innerHTML = `
+        <div class="emoji">${p.image}</div>
+        <h3>${p.name}</h3>
+        <div class="price">₹${p.price.toLocaleString('en-IN')} <s>₹${p.mrp.toLocaleString('en-IN')}</s></div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // Initialize the AI assistant widget
+    const assistant = ShopSphereChat.init({
+      brand: "ShopSphere",
+      themeColor: "#1A2B4C",
+      accentColor: "#FF9F1C"
+    });
+
+    // Auto-open once on first load so first-time viewers see it immediately
+    setTimeout(() => assistant.toggle(true), 600);
+  </script>
+</body>
+</html>
