@@ -1,11 +1,20 @@
 /**
- * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine
+ * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v2)
  * ----------------------------------------------------------------
  * Core principle: VERBATIM TRANSPARENCY.
  * Every single message the shopper types is captured and rendered
  * back EXACTLY as typed — no autocorrect, no paraphrasing, no silent
  * "interpretation" — before the assistant acts on it. This is the
- * product's core trust feature and must never be bypassed.
+ * product's core trust feature and must never be bypassed, even as
+ * the intelligence layer around it grows more advanced below.
+ *
+ * v2 additions:
+ *   - Typo-tolerant + synonym-aware product search
+ *   - Cart (add / view / remove / checkout summary)
+ *   - Side-by-side product comparison ("compare X and Y")
+ *   - Basic sentiment detection with empathetic de-escalation
+ *   - Conversation memory (refers back to last search results)
+ *   - Dark mode toggle
  *
  * Drop-in usage on any existing storefront:
  *   <link rel="stylesheet" href="css/style.css">
@@ -35,6 +44,22 @@
 
   const GREETINGS = ["hi", "hello", "hey", "hii", "helo", "yo", "namaste"];
 
+  // Lightweight synonym map so "headset"/"earphones"/"buds" all reach the same products
+  // without needing a real NLP model. Extend this freely as your catalog grows.
+  const SYNONYMS = {
+    "headset": "earbuds", "headphones": "earbuds", "earphones": "earbuds", "buds": "earbuds", "earpod": "earbuds", "earpods": "earbuds",
+    "sneakers": "shoes", "trainers": "shoes", "kicks": "shoes",
+    "television": "tv", "telly": "tv",
+    "notebook": "laptop", "macbook": "laptop", "pc": "laptop",
+    "smartwatch": "fitness tracker", "band": "fitness tracker",
+    "jacket": "hoodie", "sweatshirt": "hoodie",
+    "moisturizer": "serum", "cream": "serum",
+    "rucksack": "backpack", "bagpack": "backpack",
+    "couch": "sofa", "settee": "sofa"
+  };
+
+  const FRUSTRATION_WORDS = ["angry", "furious", "worst", "terrible", "horrible", "scam", "cheated", "useless", "pathetic", "disgusted", "frustrated", "awful", "unacceptable"];
+
   function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
@@ -43,6 +68,45 @@
 
   function timeNow() {
     return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function expandSynonyms(text) {
+    let expanded = text;
+    Object.keys(SYNONYMS).forEach(key => {
+      const re = new RegExp("\\b" + key + "\\b", "gi");
+      if (re.test(expanded)) expanded += " " + SYNONYMS[key];
+    });
+    return expanded;
+  }
+
+  // Small Levenshtein implementation for typo tolerance (e.g. "erabuds" -> "earbuds").
+  // Fine for short product-search tokens; not meant for long strings.
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    return dp[m][n];
+  }
+
+  function fuzzyIncludes(haystackWord, needleWord) {
+    if (haystackWord.includes(needleWord) || needleWord.includes(haystackWord)) return true;
+    if (needleWord.length < 4) return false; // avoid false positives on very short words
+    return levenshtein(haystackWord, needleWord) <= 2;
+  }
+
+  function detectSentiment(text) {
+    const lower = text.toLowerCase();
+    return FRUSTRATION_WORDS.some(w => lower.includes(w)) ? "frustrated" : "neutral";
   }
 
   function detectIntent(raw) {
@@ -55,6 +119,22 @@
     const orderIdMatch = raw.match(/ORD\d{3,}/i);
     if (orderIdMatch || /track|order status|where is my order/i.test(text)) {
       return { type: "track_order", orderId: orderIdMatch ? orderIdMatch[0].toUpperCase() : null };
+    }
+
+    if (/\bcompare\b/i.test(text)) {
+      return { type: "compare", query: text.replace(/compare/gi, "") };
+    }
+
+    if (/^(view|show|open)\s+(my\s+)?cart$/i.test(text) || /what'?s in my cart/i.test(text)) {
+      return { type: "view_cart" };
+    }
+
+    if (/^(clear|empty)\s+(my\s+)?cart$/i.test(text)) {
+      return { type: "clear_cart" };
+    }
+
+    if (/\badd\b.*\bcart\b|\bbuy (it|this|that)\b/i.test(text)) {
+      return { type: "add_to_cart", raw: text };
     }
 
     for (const entry of FAQ) {
@@ -74,21 +154,33 @@
     return { type: "fallback" };
   }
 
+  function scoreProduct(p, queryWords, rawQueryLower) {
+    let score = 0;
+    const name = p.name.toLowerCase();
+    if (name.includes(rawQueryLower)) score += 5;
+    if (p.category.toLowerCase().includes(rawQueryLower)) score += 3;
+
+    queryWords.forEach(word => {
+      if (word.length < 2) return;
+      if (name.includes(word)) score += 2;
+      p.tags.forEach(tag => {
+        if (fuzzyIncludes(tag, word)) score += 2;
+      });
+      name.split(" ").forEach(nameWord => {
+        if (fuzzyIncludes(nameWord, word)) score += 1;
+      });
+    });
+    return score;
+  }
+
   function searchProducts(query, catalog) {
     if (!query) return [];
-    const q = query.toLowerCase();
+    const expanded = expandSynonyms(query.toLowerCase());
+    const words = expanded.split(/\s+/).filter(Boolean);
+    const rawQueryLower = query.toLowerCase();
+
     return catalog
-      .map(p => {
-        let score = 0;
-        if (p.name.toLowerCase().includes(q)) score += 5;
-        if (p.category.toLowerCase().includes(q)) score += 3;
-        p.tags.forEach(t => { if (q.includes(t) || t.includes(q)) score += 2; });
-        q.split(" ").forEach(word => {
-          if (word.length > 2 && p.name.toLowerCase().includes(word)) score += 1;
-          if (word.length > 2 && p.tags.some(t => t.includes(word))) score += 1;
-        });
-        return { p, score };
-      })
+      .map(p => ({ p, score: scoreProduct(p, words, rawQueryLower) }))
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 4)
@@ -102,18 +194,22 @@
         themeColor: "#1A2B4C",
         accentColor: "#FF9F1C",
         catalog: window.SHOPSPHERE_PRODUCTS || [],
-        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, track an order, or answer a question — I'll always show exactly what you typed before I act on it."
+        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, or manage your cart — I'll always show exactly what you typed before I act on it."
       }, opts);
 
       this.transcript = [];
       this.awaitingOrderId = false;
+      this.lastResults = [];
+      this.cart = []; // { product, qty }
+      this.darkMode = false;
+
       this._buildDOM();
       this._bindEvents();
       this._pushBotMessage(this.opts.greetingMessage, this._quickReplies());
     }
 
     _quickReplies() {
-      return ["Track my order", "Search for headphones", "Return policy", "Talk to a human"];
+      return ["Track my order", "Search for headphones", "Compare shoes and hoodie", "Talk to a human"];
     }
 
     _buildDOM() {
@@ -122,6 +218,7 @@
       root.innerHTML = `
         <button class="ssc-launcher" aria-label="Open shopping assistant" title="Chat with ShopSphere Assistant">
           <span class="ssc-launcher-icon">💬</span>
+          <span class="ssc-cart-badge" hidden>0</span>
         </button>
         <section class="ssc-panel" role="dialog" aria-label="ShopSphere AI Assistant" aria-hidden="true">
           <header class="ssc-header">
@@ -133,6 +230,8 @@
               </div>
             </div>
             <div class="ssc-header-actions">
+              <button class="ssc-icon-btn ssc-cart-btn" title="View cart" aria-label="View cart">🛒</button>
+              <button class="ssc-icon-btn ssc-theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
               <button class="ssc-icon-btn ssc-export" title="Download transcript" aria-label="Download chat transcript">⬇</button>
               <button class="ssc-icon-btn ssc-close" title="Close" aria-label="Close chat">✕</button>
             </div>
@@ -162,6 +261,7 @@
       this.quickRepliesEl = root.querySelector(".ssc-quickreplies");
       this.inputEl = root.querySelector(".ssc-input");
       this.form = root.querySelector(".ssc-inputbar");
+      this.cartBadge = root.querySelector(".ssc-cart-badge");
       root.style.setProperty("--ssc-theme", this.opts.themeColor);
       root.style.setProperty("--ssc-accent", this.opts.accentColor);
     }
@@ -171,6 +271,8 @@
       root.querySelector(".ssc-launcher").addEventListener("click", () => this.toggle());
       root.querySelector(".ssc-close").addEventListener("click", () => this.toggle(false));
       root.querySelector(".ssc-export").addEventListener("click", () => this._exportTranscript());
+      root.querySelector(".ssc-theme-toggle").addEventListener("click", () => this._toggleDarkMode());
+      root.querySelector(".ssc-cart-btn").addEventListener("click", () => this._handleUserInput("view cart"));
 
       this.form.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -210,6 +312,12 @@
       if (next) setTimeout(() => this.inputEl.focus(), 150);
     }
 
+    _toggleDarkMode() {
+      this.darkMode = !this.darkMode;
+      this.root.classList.toggle("ssc-dark", this.darkMode);
+      this.root.querySelector(".ssc-theme-toggle").textContent = this.darkMode ? "☀️" : "🌙";
+    }
+
     _handleUserInput(raw) {
       // STEP 1 — Render the shopper's exact words, unmodified. This is non-negotiable.
       this._pushVerbatim(raw);
@@ -220,20 +328,31 @@
       window.setTimeout(() => {
         this._hideTyping();
         this._respondTo(raw);
-      }, 500 + Math.random() * 400);
+      }, 450 + Math.random() * 350);
     }
 
     _respondTo(raw) {
+      // Sentiment check runs first — a frustrated shopper gets acknowledged
+      // before anything else, regardless of what else they asked.
+      if (detectSentiment(raw) === "frustrated") {
+        this._pushBotMessage("I'm sorry this hasn't gone well — that's frustrating, and I want to help sort it out quickly. I can connect you with a human agent right now, or try to resolve it here first.", ["Talk to a human", "Try to help me here"]);
+        return;
+      }
+
       if (this.awaitingOrderId) {
         this.awaitingOrderId = false;
-        return this._resolveOrder(raw.trim().toUpperCase());
+        const idMatch = raw.match(/ORD\d{3,}/i);
+        if (idMatch) {
+          return this._resolveOrder(idMatch[0].toUpperCase());
+        }
+        // fall through to normal handling if no ID was actually given
       }
 
       const intent = detectIntent(raw);
 
       switch (intent.type) {
         case "greeting":
-          this._pushBotMessage("Hello! What can I help you with — finding a product, tracking an order, or a policy question?", this._quickReplies());
+          this._pushBotMessage("Hello! What can I help you with — finding a product, comparing options, tracking an order, or your cart?", this._quickReplies());
           break;
 
         case "track_order":
@@ -249,8 +368,47 @@
           this._pushBotMessage(intent.reply, intent.reply.includes("human support") ? [] : ["Anything else?", "Track my order"]);
           break;
 
+        case "compare": {
+          const parts = intent.query.split(/\band\b|,|\bvs\.?\b/i).map(s => s.trim()).filter(Boolean);
+          if (parts.length < 2) {
+            this._pushBotMessage('Tell me two products to compare, like "compare running shoes and hoodie".');
+            break;
+          }
+          const a = searchProducts(parts[0], this.opts.catalog)[0];
+          const b = searchProducts(parts[1], this.opts.catalog)[0];
+          if (a && b) {
+            this._pushBotMessage(`Comparing "${parts[0].trim()}" and "${parts[1].trim()}":`);
+            this._pushComparisonCard(a, b);
+          } else {
+            this._pushBotMessage("I couldn't find a match for one or both of those — try different keywords.");
+          }
+          break;
+        }
+
+        case "add_to_cart": {
+          if (this.lastResults.length === 0) {
+            this._pushBotMessage("Search for a product first, then tell me to add it to your cart.");
+            break;
+          }
+          const target = this.lastResults[0];
+          this._addToCart(target);
+          this._pushBotMessage(`Added "${target.name}" to your cart. Say "view cart" any time to see it.`, ["View cart", "Keep shopping"]);
+          break;
+        }
+
+        case "view_cart":
+          this._pushCartSummary();
+          break;
+
+        case "clear_cart":
+          this.cart = [];
+          this._updateCartBadge();
+          this._pushBotMessage("Your cart is now empty.");
+          break;
+
         case "search": {
           const results = searchProducts(intent.query || raw, this.opts.catalog);
+          this.lastResults = results;
           if (results.length) {
             this._pushBotMessage(`Here's what I found for "${raw}":`);
             this._pushProductCards(results);
@@ -261,7 +419,7 @@
         }
 
         default:
-          this._pushBotMessage(`I want to make sure I get this right — you said: "${raw}". I can help with product search, order tracking, returns, or payments. Which one fits best?`, this._quickReplies());
+          this._pushBotMessage(`I want to make sure I get this right — you said: "${raw}". I can help with product search, comparisons, order tracking, your cart, or returns. Which one fits best?`, this._quickReplies());
       }
     }
 
@@ -276,9 +434,32 @@
       }
     }
 
+    _addToCart(product) {
+      const existing = this.cart.find(c => c.product.id === product.id);
+      if (existing) existing.qty += 1;
+      else this.cart.push({ product, qty: 1 });
+      this._updateCartBadge();
+    }
+
+    _updateCartBadge() {
+      const count = this.cart.reduce((sum, c) => sum + c.qty, 0);
+      this.cartBadge.textContent = String(count);
+      this.cartBadge.hidden = count === 0;
+    }
+
+    _pushCartSummary() {
+      if (this.cart.length === 0) {
+        this._pushBotMessage("Your cart is empty. Search for something and say \"add to cart\" to get started.");
+        return;
+      }
+      const total = this.cart.reduce((sum, c) => sum + c.product.price * c.qty, 0);
+      const lines = this.cart.map(c => `${c.qty} × ${c.product.name} — ₹${(c.product.price * c.qty).toLocaleString("en-IN")}`);
+      this._pushBotMessage(`Your cart:\n${lines.join("\n")}\n\nTotal: ₹${total.toLocaleString("en-IN")}`, ["Clear cart", "Keep shopping"]);
+    }
+
     _pushVerbatim(raw) {
       const wrap = document.createElement("div");
-      wrap.className = "ssc-msg ssc-msg-user";
+      wrap.className = "ssc-msg ssc-msg-user ssc-anim-in";
       wrap.innerHTML = `
         <div class="ssc-ticket">
           <div class="ssc-ticket-label">YOU TYPED — SHOWN EXACTLY</div>
@@ -293,7 +474,7 @@
 
     _pushBotMessage(text, quickReplies) {
       const wrap = document.createElement("div");
-      wrap.className = "ssc-msg ssc-msg-bot";
+      wrap.className = "ssc-msg ssc-msg-bot ssc-anim-in";
       wrap.innerHTML = `
         <span class="ssc-avatar-sm">🤖</span>
         <div class="ssc-bubble"></div>
@@ -307,17 +488,51 @@
 
     _pushProductCards(products) {
       const wrap = document.createElement("div");
-      wrap.className = "ssc-msg ssc-msg-bot ssc-products";
+      wrap.className = "ssc-msg ssc-msg-bot ssc-products ssc-anim-in";
       const cardsHtml = products.map(p => `
         <div class="ssc-card">
           <div class="ssc-card-img">${p.image}</div>
           <div class="ssc-card-name">${escapeHtml(p.name)}</div>
           <div class="ssc-card-price">₹${p.price.toLocaleString("en-IN")} <s>₹${p.mrp.toLocaleString("en-IN")}</s></div>
           <div class="ssc-card-meta">⭐ ${p.rating} · ${p.stock > 0 ? p.stock + " in stock" : "Out of stock"}</div>
-          <button class="ssc-card-btn">View product</button>
+          <button class="ssc-card-btn" data-id="${p.id}">Add to cart</button>
         </div>
       `).join("");
       wrap.innerHTML = `<span class="ssc-avatar-sm">🤖</span><div class="ssc-card-row">${cardsHtml}</div>`;
+      wrap.querySelectorAll(".ssc-card-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const product = products.find(p => p.id === btn.dataset.id);
+          this._addToCart(product);
+          btn.textContent = "Added ✓";
+          btn.disabled = true;
+        });
+      });
+      this.messagesEl.appendChild(wrap);
+      this._scrollToBottom();
+    }
+
+    _pushComparisonCard(a, b) {
+      const wrap = document.createElement("div");
+      wrap.className = "ssc-msg ssc-msg-bot ssc-anim-in";
+      const row = (label, av, bv) => `
+        <div class="ssc-compare-row">
+          <span class="ssc-compare-label">${label}</span>
+          <span class="ssc-compare-val">${av}</span>
+          <span class="ssc-compare-val">${bv}</span>
+        </div>`;
+      wrap.innerHTML = `
+        <span class="ssc-avatar-sm">🤖</span>
+        <div class="ssc-compare-card">
+          <div class="ssc-compare-row ssc-compare-head">
+            <span></span>
+            <span>${a.image} ${escapeHtml(a.name)}</span>
+            <span>${b.image} ${escapeHtml(b.name)}</span>
+          </div>
+          ${row("Price", "₹" + a.price.toLocaleString("en-IN"), "₹" + b.price.toLocaleString("en-IN"))}
+          ${row("Rating", "⭐ " + a.rating, "⭐ " + b.rating)}
+          ${row("Stock", a.stock > 0 ? a.stock + " left" : "Out of stock", b.stock > 0 ? b.stock + " left" : "Out of stock")}
+        </div>
+      `;
       this.messagesEl.appendChild(wrap);
       this._scrollToBottom();
     }
