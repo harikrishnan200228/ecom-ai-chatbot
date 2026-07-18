@@ -1,20 +1,13 @@
 /**
- * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v4)
+ * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v5)
  * ----------------------------------------------------------------
  * Core principle: VERBATIM TRANSPARENCY.
  * Every single message the shopper types is captured and rendered
  * back EXACTLY as typed — no autocorrect, no paraphrasing, no silent
  * "interpretation" — before the assistant acts on it.
  *
- * v4 additions:
- *   - AI Repair Before Replace (suggests a fix before pushing a purchase)
- *   - AI "Future You" (simulated predictive replenishment)
- *
- * Drop-in usage on any existing storefront:
- *   <link rel="stylesheet" href="css/style.css">
- *   <script src="data/products.js"></script>
- *   <script src="js/chatbot.js"></script>
- *   <script> ShopSphereChat.init({ brand: "YourStore", themeColor: "#1A2B4C" }); </script>
+ * v5 additions: Wishlist, order address change, Hindi language toggle,
+ * price-drop alerts (with a live simulated demo notification).
  */
 
 (function (window, document) {
@@ -99,8 +92,6 @@
     { term: "fitness tracker", count: 55 }
   ];
 
-  // AI Repair Before Replace — category -> a quick, genuinely useful fix to
-  // try before buying a replacement, plus where to get real repair help.
   const REPAIR_TIPS = {
     electronics: {
       tip: "First try a full charge cycle (leave it plugged in for at least 2 hours, even if it seems completely dead), check the charging cable and port for lint or damage, and try a factory reset if the device supports one. A large share of \"broken\" electronics are software glitches, not hardware failures.",
@@ -132,14 +123,32 @@
     }
   };
 
-  // AI "Future You" — simulated predictive replenishment based on order
-  // history. In production this would be computed from real purchase dates
-  // and category-average replacement cycles, not hard-coded.
   const FUTURE_PREDICTIONS = [
     { text: "Your GlowSkin Vitamin C Serum was delivered on 12 Jul 2026 — most shoppers repurchase around the 60-day mark, so you're likely due again by mid-September.", reorder: "GlowSkin Vitamin C Serum" },
     { text: "Your AirFlow Pro Wireless Earbuds are approaching the 1-year mark soon — battery health typically starts declining around then, worth testing your charge time.", reorder: "AirFlow Pro Wireless Earbuds" },
     { text: "Running shoes are generally due for replacement every 500–700 km of use — if your UrbanFit pair has seen regular use since your order, it may be worth checking the tread wear.", reorder: "UrbanFit Running Shoes" }
   ];
+
+  const STRINGS = {
+    en: {
+      greeting: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, plan a budget, manage your wishlist, or change a delivery address — I'll always show exactly what you typed before I act on it.",
+      langSwitched: "Sure, I'll reply in Hindi from now on. Type \"English\" any time to switch back.",
+      langSwitchedBack: "Switched back to English.",
+      cartEmpty: "Your cart is empty. Search for something and say \"add to cart\" to get started.",
+      wishlistEmpty: "Your wishlist is empty. Search for something and say \"save for later\" to add items.",
+      askOrderId: "Sure — could you share your order ID? It looks like ORD1001 and is in your order confirmation email.",
+      orderNotFound: (id) => `I couldn't find an order with ID "${id}". Please double-check the ID from your confirmation email, or say "talk to a human" for help.`
+    },
+    hi: {
+      greeting: "नमस्ते! मैं आपका ShopSphere शॉपिंग असिस्टेंट हूं। मुझसे कोई प्रोडक्ट खोजने, तुलना करने, ऑर्डर ट्रैक करने, बजट प्लान करने, विशलिस्ट या डिलीवरी एड्रेस बदलने के लिए कह सकते हैं — मैं हमेशा आपने जो टाइप किया है वही दिखाऊंगा।",
+      langSwitched: "ठीक है, अब से मैं हिंदी में जवाब दूंगा। वापस अंग्रेज़ी में जाने के लिए कभी भी \"English\" टाइप करें।",
+      langSwitchedBack: "अंग्रेज़ी में वापस आ गया।",
+      cartEmpty: "आपकी कार्ट खाली है। कुछ खोजें और \"add to cart\" कहें।",
+      wishlistEmpty: "आपकी विशलिस्ट खाली है। कुछ खोजें और \"save for later\" कहें।",
+      askOrderId: "ज़रूर — क्या आप अपनी ऑर्डर आईडी बता सकते हैं? यह ORD1001 जैसी दिखती है और आपके ऑर्डर कन्फर्मेशन ईमेल में है।",
+      orderNotFound: (id) => `मुझे "${id}" आईडी वाला कोई ऑर्डर नहीं मिला। कृपया अपने कन्फर्मेशन ईमेल से आईडी दोबारा जांचें, या मदद के लिए "talk to a human" कहें।`
+    }
+  };
 
   function escapeHtml(str) {
     const div = document.createElement("div");
@@ -234,6 +243,34 @@
 
     if (/replacement option|show me (a |the )?replacement|just replace it|skip the fix/i.test(text)) {
       return { type: "show_replacement" };
+    }
+
+    if (/^(speak|talk|reply) (to me )?in hindi$|^hindi$|हिंदी/i.test(text)) {
+      return { type: "lang_hindi" };
+    }
+
+    if (/^(speak|talk|reply) (to me )?in english$|^english$/i.test(text)) {
+      return { type: "lang_english" };
+    }
+
+    if (/save (this |it )?for later|add (this |it )?to (my )?wishlist|add to wishlist/i.test(text)) {
+      return { type: "add_wishlist" };
+    }
+
+    if (/^(view|show|open)\s+(my\s+)?wishlist$|what'?s in my wishlist/i.test(text)) {
+      return { type: "view_wishlist" };
+    }
+
+    if (/^(clear|empty)\s+(my\s+)?wishlist$/i.test(text)) {
+      return { type: "clear_wishlist" };
+    }
+
+    if (/change (my )?(delivery )?address|update (my )?(delivery )?address|modify (my )?order|wrong address/i.test(text)) {
+      return { type: "change_address" };
+    }
+
+    if (/notify me (if|when)|price (drop )?alert|alert me (if|when)|track (the )?price|let me know if.*(price|cheaper)/i.test(text)) {
+      return { type: "price_alert" };
     }
 
     if (/predict|future (need|purchase)|what will i need|running low|due for (a )?replacement|remind me (about|when)/i.test(text)) {
@@ -333,7 +370,7 @@
         themeColor: "#1A2B4C",
         accentColor: "#FF9F1C",
         catalog: window.SHOPSPHERE_PRODUCTS || [],
-        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, plan a budget, say \"help me pick a gift\", or tell me if something's broken before you replace it — I'll always show exactly what you typed before I act on it."
+        greetingMessage: STRINGS.en.greeting
       }, opts);
 
       this.transcript = [];
@@ -341,16 +378,25 @@
       this.lastResults = [];
       this.cart = [];
       this.darkMode = false;
-      this.consultant = null; // { step: "interest" | "budget", interest }
+      this.consultant = null;
       this.lastRepairCategory = null;
+      this.wishlist = [];
+      this.language = "en";
+      this.addressChange = null;
+      this.priceAlerts = [];
 
       this._buildDOM();
       this._bindEvents();
       this._pushBotMessage(this.opts.greetingMessage, this._quickReplies());
     }
 
+    _t(key) {
+      const dict = STRINGS[this.language] || STRINGS.en;
+      return dict[key] !== undefined ? dict[key] : STRINGS.en[key];
+    }
+
     _quickReplies() {
-      return ["My earbuds stopped working", "What's due for replacement soon?", "Help me pick a gift", "Set up a home gym under 5000"];
+      return ["My earbuds stopped working", "Help me pick a gift", "Save this for later", "Change my delivery address"];
     }
 
     _buildDOM() {
@@ -486,6 +532,10 @@
         return this._continueConsultant(raw);
       }
 
+      if (this.addressChange) {
+        return this._continueAddressChange(raw);
+      }
+
       const intent = detectIntent(raw);
 
       switch (intent.type) {
@@ -493,12 +543,57 @@
           this._pushBotMessage("Hello! What can I help you with — finding a product, comparing options, tracking an order, or planning a purchase?", this._quickReplies());
           break;
 
+        case "lang_hindi":
+          this.language = "hi";
+          this._pushBotMessage(this._t("langSwitched"));
+          break;
+
+        case "lang_english":
+          this.language = "en";
+          this._pushBotMessage(this._t("langSwitchedBack"));
+          break;
+
+        case "add_wishlist": {
+          if (this.lastResults.length === 0) {
+            this._pushBotMessage("Search for a product first, then tell me to save it for later.");
+            break;
+          }
+          const item = this.lastResults[0];
+          if (!this.wishlist.find(p => p.id === item.id)) this.wishlist.push(item);
+          this._pushBotMessage(`Saved "${item.name}" to your wishlist.`, ["View wishlist", "Keep shopping"]);
+          break;
+        }
+
+        case "view_wishlist": {
+          if (this.wishlist.length === 0) {
+            this._pushBotMessage(this._t("wishlistEmpty"));
+            break;
+          }
+          this._pushBotMessage("Here's what's in your wishlist:");
+          this._pushProductCards(this.wishlist);
+          break;
+        }
+
+        case "clear_wishlist":
+          this.wishlist = [];
+          this._pushBotMessage("Your wishlist is now empty.");
+          break;
+
+        case "change_address":
+          this.addressChange = { step: "orderId" };
+          this._pushBotMessage("Sure — which order needs the address updated? Share the order ID (looks like ORD1001).");
+          break;
+
+        case "price_alert":
+          this._handlePriceAlert();
+          break;
+
         case "track_order":
           if (intent.orderId) {
             this._resolveOrder(intent.orderId);
           } else {
             this.awaitingOrderId = true;
-            this._pushBotMessage("Sure — could you share your order ID? It looks like ORD1001 and is in your order confirmation email.");
+            this._pushBotMessage(this._t("askOrderId"));
           }
           break;
 
@@ -647,7 +742,6 @@
       );
     }
 
-    // ---------------- v4: AI Repair Before Replace ----------------
     _handleRepairCheck(raw) {
       const match = searchProducts(raw, this.opts.catalog)[0];
       const category = match ? match.category : null;
@@ -676,7 +770,56 @@
       this.lastResults = candidates.slice(0, 4);
     }
 
-    // ---------------- v4: AI "Future You" ----------------
+    _continueAddressChange(raw) {
+      if (this.addressChange.step === "orderId") {
+        const idMatch = raw.match(/ORD\d{3,}/i);
+        if (!idMatch) {
+          this._pushBotMessage("That doesn't look like an order ID — it should look like ORD1001. Could you share it again?");
+          return;
+        }
+        const orderId = idMatch[0].toUpperCase();
+        if (!ORDER_DB[orderId]) {
+          this.addressChange = null;
+          this._pushBotMessage(this._t("orderNotFound")(orderId));
+          return;
+        }
+        if (ORDER_DB[orderId].status === "Delivered" || ORDER_DB[orderId].status === "Out for delivery") {
+          this.addressChange = null;
+          this._pushBotMessage(`Order ${orderId} is already ${ORDER_DB[orderId].status.toLowerCase()} — the address can no longer be changed for this one. For a correction at this stage, I'd recommend contacting the courier directly or talking to a human agent.`, ["Talk to a human"]);
+          return;
+        }
+        this.addressChange.orderId = orderId;
+        this.addressChange.step = "address";
+        this._pushBotMessage(`Got it — order ${orderId}. What's the new delivery address?`);
+        return;
+      }
+
+      if (this.addressChange.step === "address") {
+        const orderId = this.addressChange.orderId;
+        this.addressChange = null;
+        this._pushBotMessage(`Done — the delivery address for order ${orderId} has been updated to:\n"${raw}"\n\nYou'll get a confirmation email shortly.`, ["Track my order", "Anything else?"]);
+      }
+    }
+
+    _handlePriceAlert() {
+      if (this.lastResults.length === 0) {
+        this._pushBotMessage('Search for a product first, then say "notify me if the price drops".');
+        return;
+      }
+      const product = this.lastResults[0];
+      this.priceAlerts.push(product);
+      this._pushBotMessage(
+        `Done — I'll let you know if the price on "${product.name}" drops. (Demo: simulating a price drop in a few seconds so you can see how the alert looks.)`
+      );
+      window.setTimeout(() => {
+        const droppedPrice = Math.round(product.price * 0.85);
+        this._pushBotMessage(
+          `🔔 Price drop alert: "${product.name}" is now ₹${droppedPrice.toLocaleString("en-IN")} (was ₹${product.price.toLocaleString("en-IN")}) — ${Math.round((1 - droppedPrice / product.price) * 100)}% off.`,
+          ["Add to cart", "View product"]
+        );
+      }, 5000);
+    }
+
     _pushFutureYou() {
       const lines = FUTURE_PREDICTIONS.map(p => `• ${p.text}`);
       this._pushBotMessage(
@@ -756,7 +899,7 @@
           `Order ${orderId} — ${order.item}\nStatus: ${order.status}\nEstimated: ${order.eta}\nCarrier: ${order.carrier} (${order.tracking})`
         );
       } else {
-        this._pushBotMessage(`I couldn't find an order with ID "${orderId}". Please double-check the ID from your confirmation email, or say "talk to a human" for help.`);
+        this._pushBotMessage(this._t("orderNotFound")(orderId));
       }
     }
 
@@ -775,7 +918,7 @@
 
     _pushCartSummary() {
       if (this.cart.length === 0) {
-        this._pushBotMessage("Your cart is empty. Search for something and say \"add to cart\" to get started.");
+        this._pushBotMessage(this._t("cartEmpty"));
         return;
       }
       const total = this.cart.reduce((sum, c) => sum + c.product.price * c.qty, 0);
@@ -821,15 +964,21 @@
           <div class="ssc-card-name">${escapeHtml(p.name)}</div>
           <div class="ssc-card-price">₹${p.price.toLocaleString("en-IN")} <s>₹${p.mrp.toLocaleString("en-IN")}</s></div>
           <div class="ssc-card-meta">⭐ ${p.rating} · ${p.stock > 0 ? p.stock + " in stock" : "Out of stock"}</div>
-          <button class="ssc-card-btn" data-id="${p.id}">Add to cart</button>
+          <button class="ssc-card-btn" data-id="${p.id}" data-action="cart">Add to cart</button>
+          <button class="ssc-card-btn ssc-card-btn-secondary" data-id="${p.id}" data-action="wishlist">Save for later</button>
         </div>
       `).join("");
       wrap.innerHTML = `<span class="ssc-avatar-sm">🤖</span><div class="ssc-card-row">${cardsHtml}</div>`;
       wrap.querySelectorAll(".ssc-card-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           const product = products.find(p => p.id === btn.dataset.id);
-          this._addToCart(product);
-          btn.textContent = "Added ✓";
+          if (btn.dataset.action === "wishlist") {
+            if (!this.wishlist.find(p => p.id === product.id)) this.wishlist.push(product);
+            btn.textContent = "Saved ✓";
+          } else {
+            this._addToCart(product);
+            btn.textContent = "Added ✓";
+          }
           btn.disabled = true;
         });
       });

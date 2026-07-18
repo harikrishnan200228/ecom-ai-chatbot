@@ -361,6 +361,13 @@ body {
   gap: 6px;
   padding: 0 14px 8px;
 }
+.ssc-card-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--slate-300);
+  color: var(--indigo-700);
+  margin-top: 4px;
+}
+.ssc-card-btn-secondary:hover { background: var(--slate-100); }
 .ssc-chip {
   background: white;
   border: 1px solid var(--slate-300);
