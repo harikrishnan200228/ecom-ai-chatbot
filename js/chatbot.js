@@ -1,19 +1,14 @@
 /**
- * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v3)
+ * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v4)
  * ----------------------------------------------------------------
  * Core principle: VERBATIM TRANSPARENCY.
  * Every single message the shopper types is captured and rendered
  * back EXACTLY as typed — no autocorrect, no paraphrasing, no silent
- * "interpretation" — before the assistant acts on it. This is the
- * product's core trust feature and must never be bypassed, even as
- * the intelligence layer around it grows more advanced below.
+ * "interpretation" — before the assistant acts on it.
  *
- * v3 additions:
- *   - Location-based delivery estimate (browser geolocation, opt-in)
- *   - AI Shopping Consultant (multi-turn: interest -> budget -> pick)
- *   - Goal-Based Shopping ("set up a home gym under 5000")
- *   - Community AI (simulated trending searches)
- *   - AI Box Builder (curated, discounted bundles)
+ * v4 additions:
+ *   - AI Repair Before Replace (suggests a fix before pushing a purchase)
+ *   - AI "Future You" (simulated predictive replenishment)
  *
  * Drop-in usage on any existing storefront:
  *   <link rel="stylesheet" href="css/style.css">
@@ -57,11 +52,6 @@
 
   const FRUSTRATION_WORDS = ["angry", "furious", "worst", "terrible", "horrible", "scam", "cheated", "useless", "pathetic", "disgusted", "frustrated", "awful", "unacceptable"];
 
-  // ---- v3: reference data for the new features ----
-
-  // Approximate coordinates for a handful of Indian cities, used only to give a
-  // realistic-feeling delivery estimate from the browser's geolocation. In
-  // production, replace this with a real pincode/logistics API lookup.
   const CITIES = [
     { name: "Bengaluru", lat: 12.9716, lon: 77.5946, eta: "1–2 business days" },
     { name: "Mumbai", lat: 19.0760, lon: 72.8777, eta: "2–3 business days" },
@@ -73,8 +63,6 @@
     { name: "Kollam", lat: 8.8932, lon: 76.6141, eta: "1–2 business days" }
   ];
 
-  // Interest keyword -> catalog tags, used by the AI Shopping Consultant to
-  // narrow a fuzzy human interest ("cooking", "fitness") down to real tags.
   const INTEREST_TAGS = {
     cooking: ["kitchen", "coffee", "appliance", "home"],
     fitness: ["fitness", "sports", "tracker", "running"],
@@ -85,8 +73,6 @@
     travel: ["travel", "bag", "hiking"]
   };
 
-  // Theme keyword -> catalog tags, used by Goal-Based Shopping to assemble a
-  // multi-item plan under a stated budget.
   const THEME_TAGS = {
     gym: ["fitness", "sports", "tracker"],
     "home gym": ["fitness", "sports", "tracker"],
@@ -97,8 +83,6 @@
     skincare: ["beauty", "skincare", "cosmetics"]
   };
 
-  // Curated bundles for the AI Box Builder — each pulls matching catalog items
-  // and applies a bundle discount, same idea as a subscription/gift box.
   const BUNDLES = {
     fitness: { label: "Home Fitness Box", tags: ["fitness", "sports", "tracker"], discount: 0.07 },
     travel: { label: "Travel Essentials Box", tags: ["travel", "bag", "hiking"], discount: 0.05 },
@@ -113,6 +97,48 @@
     { term: "4K smart TV", count: 76 },
     { term: "coffee maker", count: 61 },
     { term: "fitness tracker", count: 55 }
+  ];
+
+  // AI Repair Before Replace — category -> a quick, genuinely useful fix to
+  // try before buying a replacement, plus where to get real repair help.
+  const REPAIR_TIPS = {
+    electronics: {
+      tip: "First try a full charge cycle (leave it plugged in for at least 2 hours, even if it seems completely dead), check the charging cable and port for lint or damage, and try a factory reset if the device supports one. A large share of \"broken\" electronics are software glitches, not hardware failures.",
+      service: "our authorized service center (see Warranty & Service on the product page)"
+    },
+    footwear: {
+      tip: "For sole separation, torn stitching, or worn treads, a local cobbler can usually repair it for a fraction of replacement cost — resoling typically runs 10–20% of a new pair's price.",
+      service: "a local cobbler"
+    },
+    fashion: {
+      tip: "Loose seams, missing buttons, or small tears are almost always cheaper to repair or alter than to replace — a tailor can usually fix these in a day.",
+      service: "a local tailor"
+    },
+    home: {
+      tip: "For furniture and home appliances, check if the issue is a loose connection, worn part, or simple wear-and-tear first — many issues are fixed with a single replacement part rather than the whole item.",
+      service: "a home appliance repair technician"
+    },
+    beauty: {
+      tip: "If a pump or applicator has stopped working but the product itself is fine, it's often just clogged — try rinsing the nozzle in warm water before assuming the product is unusable.",
+      service: "our customer care team"
+    },
+    travel: {
+      tip: "For zippers, straps, or seams on bags and backpacks, most issues can be repaired by a luggage/leather repair shop for far less than a replacement.",
+      service: "a local luggage repair shop"
+    },
+    default: {
+      tip: "Before replacing it, it's worth checking if the issue is something simple and fixable rather than a full failure.",
+      service: "our customer care team"
+    }
+  };
+
+  // AI "Future You" — simulated predictive replenishment based on order
+  // history. In production this would be computed from real purchase dates
+  // and category-average replacement cycles, not hard-coded.
+  const FUTURE_PREDICTIONS = [
+    { text: "Your GlowSkin Vitamin C Serum was delivered on 12 Jul 2026 — most shoppers repurchase around the 60-day mark, so you're likely due again by mid-September.", reorder: "GlowSkin Vitamin C Serum" },
+    { text: "Your AirFlow Pro Wireless Earbuds are approaching the 1-year mark soon — battery health typically starts declining around then, worth testing your charge time.", reorder: "AirFlow Pro Wireless Earbuds" },
+    { text: "Running shoes are generally due for replacement every 500–700 km of use — if your UrbanFit pair has seen regular use since your order, it may be worth checking the tread wear.", reorder: "UrbanFit Running Shoes" }
   ];
 
   function escapeHtml(str) {
@@ -200,6 +226,18 @@
 
     if (/deliver(y)?.*(my location|here|current location)|check delivery.*(location)|eta.*(my location)|when will it (arrive|reach) (me|here)/i.test(text)) {
       return { type: "locate_delivery" };
+    }
+
+    if (/\b(broke|broken|not working|stopped working|isn'?t working|doesn'?t work|damaged|torn|malfunctioning|won'?t (turn on|charge)|stopped charging)\b/i.test(text)) {
+      return { type: "repair_check", raw: text };
+    }
+
+    if (/replacement option|show me (a |the )?replacement|just replace it|skip the fix/i.test(text)) {
+      return { type: "show_replacement" };
+    }
+
+    if (/predict|future (need|purchase)|what will i need|running low|due for (a )?replacement|remind me (about|when)/i.test(text)) {
+      return { type: "future_you" };
     }
 
     if (/trending|popular|what.*(others|people|shoppers).*(buying|searching|looking)/i.test(text)) {
@@ -295,7 +333,7 @@
         themeColor: "#1A2B4C",
         accentColor: "#FF9F1C",
         catalog: window.SHOPSPHERE_PRODUCTS || [],
-        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, plan a budget, or just say \"help me pick a gift\" — I'll always show exactly what you typed before I act on it."
+        greetingMessage: "Hi! I'm your ShopSphere shopping assistant. Ask me to find a product, compare items, track an order, plan a budget, say \"help me pick a gift\", or tell me if something's broken before you replace it — I'll always show exactly what you typed before I act on it."
       }, opts);
 
       this.transcript = [];
@@ -304,6 +342,7 @@
       this.cart = [];
       this.darkMode = false;
       this.consultant = null; // { step: "interest" | "budget", interest }
+      this.lastRepairCategory = null;
 
       this._buildDOM();
       this._bindEvents();
@@ -311,7 +350,7 @@
     }
 
     _quickReplies() {
-      return ["Help me pick a gift", "Set up a home gym under 5000", "What's trending?", "Track my order"];
+      return ["My earbuds stopped working", "What's due for replacement soon?", "Help me pick a gift", "Set up a home gym under 5000"];
     }
 
     _buildDOM() {
@@ -443,8 +482,6 @@
         if (idMatch) return this._resolveOrder(idMatch[0].toUpperCase());
       }
 
-      // Multi-turn AI Shopping Consultant takes priority over normal intent
-      // detection while a session is active, same pattern as awaitingOrderId.
       if (this.consultant) {
         return this._continueConsultant(raw);
       }
@@ -467,6 +504,18 @@
 
         case "locate_delivery":
           this._handleLocationDelivery();
+          break;
+
+        case "repair_check":
+          this._handleRepairCheck(intent.raw);
+          break;
+
+        case "show_replacement":
+          this._handleShowReplacement();
+          break;
+
+        case "future_you":
+          this._pushFutureYou();
           break;
 
         case "trending":
@@ -545,7 +594,6 @@
       }
     }
 
-    // ---------------- v3: AI Shopping Consultant ----------------
     _continueConsultant(raw) {
       if (this.consultant.step === "interest") {
         this.consultant.interest = raw.toLowerCase().trim();
@@ -581,7 +629,6 @@
       }
     }
 
-    // ---------------- v3: Location-based delivery estimate ----------------
     _handleLocationDelivery() {
       if (!navigator.geolocation) {
         this._pushBotMessage("Your browser doesn't support location access — you can still check delivery time by entering your pincode on the checkout page.");
@@ -600,7 +647,44 @@
       );
     }
 
-    // ---------------- v3: Goal-Based Shopping ----------------
+    // ---------------- v4: AI Repair Before Replace ----------------
+    _handleRepairCheck(raw) {
+      const match = searchProducts(raw, this.opts.catalog)[0];
+      const category = match ? match.category : null;
+      const tips = REPAIR_TIPS[category] || REPAIR_TIPS.default;
+      this.lastRepairCategory = category;
+
+      const itemLine = match ? `It sounds like this might be about your ${match.name}. ` : "";
+      this._pushBotMessage(
+        `${itemLine}Before you replace it, here's something worth trying: ${tips.tip} If that doesn't resolve it, ${tips.service} can usually help.`,
+        ["Show me replacement options", "I'll try the fix first", "Talk to a human"]
+      );
+    }
+
+    _handleShowReplacement() {
+      const category = this.lastRepairCategory;
+      const candidates = category
+        ? this.opts.catalog.filter(p => p.category === category).sort((a, b) => b.rating - a.rating)
+        : [];
+
+      if (candidates.length === 0) {
+        this._pushBotMessage("Tell me what you're looking to replace and I'll pull up some options.");
+        return;
+      }
+      this._pushBotMessage("No problem — here are some options if you'd rather replace it:");
+      this._pushProductCards(candidates.slice(0, 4));
+      this.lastResults = candidates.slice(0, 4);
+    }
+
+    // ---------------- v4: AI "Future You" ----------------
+    _pushFutureYou() {
+      const lines = FUTURE_PREDICTIONS.map(p => `• ${p.text}`);
+      this._pushBotMessage(
+        `Based on typical usage patterns for your past orders, here's what I'm predicting you might need soon:\n${lines.join("\n")}`,
+        FUTURE_PREDICTIONS.map(p => `Reorder ${p.reorder}`)
+      );
+    }
+
     _handleGoalShopping(raw) {
       const budget = parseLargestNumber(raw);
       const themeKey = Object.keys(THEME_TAGS).find(k => raw.includes(k));
@@ -636,7 +720,6 @@
       this.lastResults = plan;
     }
 
-    // ---------------- v3: AI Box Builder ----------------
     _handleBoxBuilder(raw) {
       const key = Object.keys(BUNDLES).find(k => raw.includes(k) || raw.includes(BUNDLES[k].label.toLowerCase()));
       if (!key) {
@@ -660,7 +743,6 @@
       this.lastResults = items;
     }
 
-    // ---------------- v3: Community AI (trending) ----------------
     _pushTrending() {
       const top = [...TRENDING_SEARCHES].sort((a, b) => b.count - a.count).slice(0, 3);
       const lines = top.map(t => `• "${t.term}" — searched by ${t.count} shoppers this week`);
