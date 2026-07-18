@@ -1,13 +1,8 @@
 /**
- * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v5)
+ * ShopSphere AI Assistant — Embeddable E-commerce Chatbot Engine (v6)
  * ----------------------------------------------------------------
- * Core principle: VERBATIM TRANSPARENCY.
- * Every single message the shopper types is captured and rendered
- * back EXACTLY as typed — no autocorrect, no paraphrasing, no silent
- * "interpretation" — before the assistant acts on it.
- *
- * v5 additions: Wishlist, order address change, Hindi language toggle,
- * price-drop alerts (with a live simulated demo notification).
+ * Core principle: VERBATIM TRANSPARENCY. Every message is shown back
+ * exactly as typed before the assistant acts on it.
  */
 
 (function (window, document) {
@@ -150,6 +145,41 @@
     }
   };
 
+  const REVIEW_SUMMARIES = {
+    electronics: "Across recent reviews, customers most often praise battery life and easy setup. The most common complaint is slower-than-expected customer support response on warranty claims.",
+    footwear: "Reviews consistently highlight comfort for all-day wear and true-to-size fit. A minority of reviews mention the sole wearing down faster under heavy daily use.",
+    fashion: "Customers frequently mention good fabric quality and accurate color match to photos. Occasional feedback notes sizing runs slightly small.",
+    home: "Reviews highlight sturdy build quality and easy assembly. Some customers note delivery packaging could be more protective for fragile items.",
+    beauty: "Most reviews are positive about visible results within 2–4 weeks of regular use. A small number of reviews mention a noticeable scent some found too strong.",
+    travel: "Reviews praise durability and organized compartments. A few mention the zippers feeling less premium than the rest of the build."
+  };
+
+  const PRICE_PREDICTIONS = {
+    electronics: "Electronics in this category often see a 10–15% dip during festival sales (typically Oct–Nov) and end-of-quarter clearances. Right now looks like an average price point — fine to buy now, but you could save more by waiting for a sale window.",
+    footwear: "Footwear pricing is usually most volatile during seasonal changeovers, with 15–20% markdowns common. If you're not in a rush, waiting a few weeks around a season change could pay off.",
+    fashion: "Fashion pricing swings the most of any category — end-of-season sales often bring 30%+ off. If this isn't urgent, waiting for a seasonal sale is usually worth it.",
+    home: "Home and furniture pricing is relatively stable, with the biggest drops typically around major shopping festivals rather than random dates.",
+    beauty: "Beauty product pricing rarely drops much beyond routine promotional bundles — waiting usually saves little here.",
+    travel: "Travel gear often drops in price just before major holiday travel seasons as retailers compete for early bookings."
+  };
+
+  const MOOD_TAGS = {
+    stressed: { tags: ["beauty", "home"], note: "Something calming and low-effort can help — here's a couple of options." },
+    bored: { tags: ["electronics", "travel"], note: "Something new to explore might hit the spot — here's a couple of ideas." },
+    "treat myself": { tags: ["beauty", "fashion"], note: "You deserve it — here are a couple of nice options." },
+    celebrating: { tags: ["electronics", "home"], note: "Congrats! Here's a couple of things worth celebrating with." },
+    sad: { tags: ["beauty", "home"], note: "Here are a couple of small, comforting picks — no pressure at all." }
+  };
+
+  const SUSTAINABILITY_SCORES = {
+    electronics: { score: 3, note: "Look for the take-back recycling program available on electronics at checkout — most components are recoverable." },
+    footwear: { score: 3, note: "This brand uses partially recycled sole material; full lifecycle data isn't published yet." },
+    fashion: { score: 4, note: "Made with a cotton blend sourced from certified sustainable farms." },
+    home: { score: 3, note: "Packaging is recyclable cardboard; the product itself uses standard materials." },
+    beauty: { score: 2, note: "Formulated without microplastics, though packaging is not yet recyclable." },
+    travel: { score: 4, note: "Made from recycled polyester fabric, reducing plastic waste compared to virgin materials." }
+  };
+
   function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
@@ -277,6 +307,38 @@
       return { type: "future_you" };
     }
 
+    if (/review|what do (people|customers|others) (say|think)|customer feedback|rated well/i.test(text)) {
+      return { type: "review_summary" };
+    }
+
+    if (/will (the )?price (drop|go down|change|increase)|should i (wait|buy now)|price prediction|is now a good time to buy/i.test(text)) {
+      return { type: "price_prediction" };
+    }
+
+    if (/i'?m feeling (stressed|bored|sad|down)|treat myself|i want to treat myself|i'?m (celebrating|bored|stressed|sad)/i.test(text)) {
+      return { type: "mood_shopping", raw: text };
+    }
+
+    if (/sustainab|eco.?friendly|environmental impact|carbon footprint|is this (eco|green)/i.test(text)) {
+      return { type: "sustainability" };
+    }
+
+    if (/start a group (cart|order)|shop with friends|invite (a )?friend|group shopping/i.test(text)) {
+      return { type: "group_start" };
+    }
+
+    if (/join group (cart|order)/i.test(text)) {
+      return { type: "group_join", raw: text };
+    }
+
+    if (/generate an outfit|put together an outfit|outfit for me|style me|complete (the |my )?look/i.test(text)) {
+      return { type: "outfit_generator" };
+    }
+
+    if (/my (shopping )?dashboard|shopping analytics|show my stats|session summary/i.test(text)) {
+      return { type: "analytics_dashboard" };
+    }
+
     if (/trending|popular|what.*(others|people|shoppers).*(buying|searching|looking)/i.test(text)) {
       return { type: "trending" };
     }
@@ -384,6 +446,9 @@
       this.language = "en";
       this.addressChange = null;
       this.priceAlerts = [];
+      this.groupCode = null;
+      this.searchCount = 0;
+      this.categoryViews = {};
 
       this._buildDOM();
       this._bindEvents();
@@ -613,6 +678,38 @@
           this._pushFutureYou();
           break;
 
+        case "review_summary":
+          this._pushReviewSummary();
+          break;
+
+        case "price_prediction":
+          this._pushPricePrediction();
+          break;
+
+        case "mood_shopping":
+          this._handleMoodShopping(intent.raw);
+          break;
+
+        case "sustainability":
+          this._pushSustainability();
+          break;
+
+        case "group_start":
+          this._handleGroupStart();
+          break;
+
+        case "group_join":
+          this._handleGroupJoin(intent.raw);
+          break;
+
+        case "outfit_generator":
+          this._handleOutfitGenerator();
+          break;
+
+        case "analytics_dashboard":
+          this._pushAnalyticsDashboard();
+          break;
+
         case "trending":
           this._pushTrending();
           break;
@@ -675,6 +772,8 @@
         case "search": {
           const results = searchProducts(intent.query || raw, this.opts.catalog);
           this.lastResults = results;
+          this.searchCount += 1;
+          results.forEach(p => { this.categoryViews[p.category] = (this.categoryViews[p.category] || 0) + 1; });
           if (results.length) {
             this._pushBotMessage(`Here's what I found for "${raw}":`);
             this._pushProductCards(results);
@@ -826,6 +925,113 @@
         `Based on typical usage patterns for your past orders, here's what I'm predicting you might need soon:\n${lines.join("\n")}`,
         FUTURE_PREDICTIONS.map(p => `Reorder ${p.reorder}`)
       );
+    }
+
+    _pushReviewSummary() {
+      if (this.lastResults.length === 0) {
+        this._pushBotMessage("Search for a product first, then ask what reviews say about it.");
+        return;
+      }
+      const product = this.lastResults[0];
+      const summary = REVIEW_SUMMARIES[product.category];
+      if (!summary) {
+        this._pushBotMessage(`I don't have a review summary for "${product.name}" yet.`);
+        return;
+      }
+      this._pushBotMessage(`Review summary for ${product.name} (⭐ ${product.rating} average):\n${summary}`);
+    }
+
+    _pushPricePrediction() {
+      if (this.lastResults.length === 0) {
+        this._pushBotMessage("Search for a product first, then ask if the price is likely to drop.");
+        return;
+      }
+      const product = this.lastResults[0];
+      const prediction = PRICE_PREDICTIONS[product.category];
+      this._pushBotMessage(`For ${product.name} (currently ₹${product.price.toLocaleString("en-IN")}):\n${prediction || "I don't have enough pricing history for this category yet."}`);
+    }
+
+    _handleMoodShopping(raw) {
+      const moodKey = Object.keys(MOOD_TAGS).find(k => raw.includes(k));
+      if (!moodKey) {
+        this._pushBotMessage('Tell me how you\'re feeling and I\'ll suggest something — try "I want to treat myself" or "I\'m feeling bored".');
+        return;
+      }
+      const mood = MOOD_TAGS[moodKey];
+      const candidates = productsByTags(this.opts.catalog, mood.tags).sort((a, b) => b.rating - a.rating).slice(0, 2);
+      if (candidates.length === 0) {
+        this._pushBotMessage("I don't have a great match for that mood in the catalog right now.");
+        return;
+      }
+      this._pushBotMessage(mood.note);
+      this._pushProductCards(candidates);
+      this.lastResults = candidates;
+    }
+
+    _pushSustainability() {
+      if (this.lastResults.length === 0) {
+        this._pushBotMessage("Search for a product first, then ask about its sustainability score.");
+        return;
+      }
+      const product = this.lastResults[0];
+      const eco = SUSTAINABILITY_SCORES[product.category];
+      if (!eco) {
+        this._pushBotMessage(`I don't have sustainability data for "${product.name}" yet.`);
+        return;
+      }
+      const leaves = "🌱".repeat(eco.score) + "⬜".repeat(5 - eco.score);
+      this._pushBotMessage(`Sustainability score for ${product.name}: ${leaves} (${eco.score}/5)\n${eco.note}`);
+    }
+
+    _handleGroupStart() {
+      this.groupCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+      this._pushBotMessage(
+        `Started a group cart! Share this code with friends: ${this.groupCode}\n\n(Demo note: this browser tab is its own session, so others typing this code elsewhere won't actually see a synced cart yet — a real version would need a shared backend cart tied to this code.)`
+      );
+    }
+
+    _handleGroupJoin(raw) {
+      const candidates = raw.match(/\b[A-Z0-9]{5,8}\b/gi) || [];
+      const codeMatch = candidates.find(c => /\d/.test(c));
+      if (!codeMatch) {
+        this._pushBotMessage("What's the group cart code you'd like to join?");
+        return;
+      }
+      this._pushBotMessage(
+        `Got it — joined group cart ${codeMatch.toUpperCase()}. (Demo note: since this is a front-end-only demo, this doesn't yet pull in the real shared items — that would need a backend to sync carts across devices.)`
+      );
+    }
+
+    _handleOutfitGenerator() {
+      const top = productsByTags(this.opts.catalog, ["fashion", "clothing"])[0];
+      const shoes = productsByTags(this.opts.catalog, ["footwear", "shoes"])[0];
+      const bag = productsByTags(this.opts.catalog, ["travel", "bag"])[0];
+      const outfit = [top, shoes, bag].filter(Boolean);
+
+      if (outfit.length === 0) {
+        this._pushBotMessage("I don't have enough fashion items in the catalog yet to generate a full outfit.");
+        return;
+      }
+      const total = outfit.reduce((sum, p) => sum + p.price, 0);
+      const lines = outfit.map(p => `• ${p.name} — ₹${p.price.toLocaleString("en-IN")}`);
+      this._pushBotMessage(
+        `Here's a complete look:\n${lines.join("\n")}\n\nTotal: ₹${total.toLocaleString("en-IN")}`,
+        ["Add outfit to cart", "Generate another outfit"]
+      );
+      this.lastResults = outfit;
+    }
+
+    _pushAnalyticsDashboard() {
+      const cartTotal = this.cart.reduce((sum, c) => sum + c.product.price * c.qty, 0);
+      const topCategory = Object.entries(this.categoryViews).sort((a, b) => b[1] - a[1])[0];
+      const lines = [
+        `Searches this session: ${this.searchCount}`,
+        `Most viewed category: ${topCategory ? topCategory[0] : "none yet"}`,
+        `Cart: ${this.cart.reduce((n, c) => n + c.qty, 0)} item(s), ₹${cartTotal.toLocaleString("en-IN")}`,
+        `Wishlist: ${this.wishlist.length} item(s)`,
+        `Price alerts active: ${this.priceAlerts.length}`
+      ];
+      this._pushBotMessage(`Your shopping session so far:\n${lines.map(l => "• " + l).join("\n")}`, ["View cart", "View wishlist"]);
     }
 
     _handleGoalShopping(raw) {
