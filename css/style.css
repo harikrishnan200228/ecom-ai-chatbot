@@ -1,20 +1,4 @@
-.ssc-room-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(20, 33, 61, 0.55);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.ssc-room-panel {
-  background: white;
-  border-radius: var(--radius-lg);
-  width: 100%;
-  max-width: 480px;
-  box-shadow: var(--shadow-lg);
+.ssc-r
   overflow: hidden;
   display: flex;
   flex-direction: column;
