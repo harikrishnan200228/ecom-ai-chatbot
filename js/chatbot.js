@@ -350,8 +350,12 @@
       return { type: "box_builder", raw: text };
     }
 
-    if (/\b(build|set up|setup)\b.*\b(gym|office|kitchen|wardrobe|travel kit)\b|\bunder ₹?\d+|budget of/i.test(text)) {
-      return { type: "goal_shopping", raw: text };
+    {
+      const hasTheme = Object.keys(THEME_TAGS).some(k => text.includes(k));
+      const hasBudgetPhrase = /\b(build|set up|setup|plan)\b/i.test(text) && /under ₹?\d+|budget of ₹?\d+/i.test(text);
+      if (hasTheme && (hasBudgetPhrase || /under ₹?\d+|budget of ₹?\d+/i.test(text))) {
+        return { type: "goal_shopping", raw: text };
+      }
     }
 
     if (/gift|suggest something|help me (choose|pick|find|decide)|not sure what to (get|buy)|recommend something/i.test(text)) {
@@ -384,7 +388,7 @@
       return { type: "search", query: text.replace(/price|cost|how much|offer|discount|deal|for|of|the/gi, "").trim() };
     }
 
-    if (/search|find|show me|looking for|buy|need a|want a/i.test(text) || text.split(" ").length <= 4) {
+    if (/search|find|show me|looking for|buy|need a|want a|do you have|is there (a|any)|any .* (available|in stock)|got any/i.test(text) || text.split(" ").length <= 4) {
       return { type: "search", query: text };
     }
 
